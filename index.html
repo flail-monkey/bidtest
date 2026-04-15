@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>H Street BID Tax Calculator</title>
+<style>
+  :root {
+    --color-primary:   #1a1a2e;
+    --color-accent:    #c8a96e;
+    --color-low:       #2d6a4f;
+    --color-low-bg:    #d8f3dc;
+    --color-high:      #1d3557;
+    --color-high-bg:   #d6e8f7;
+    --color-border:    #ddd;
+    --color-text:      #222;
+    --color-muted:     #666;
+    --color-bg:        #ffffff;
+    --radius:          10px;
+    --font:            'Georgia', serif;
+    --font-ui:         -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-ui);
+    background: var(--color-bg);
+    color: var(--color-text);
+    padding: 24px 16px 40px;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  .widget-header { text-align: center; margin-bottom: 28px; }
+  .widget-header h1 { font-family: var(--font); font-size: 1.6rem; color: var(--color-primary); margin-bottom: 6px; }
+  .widget-header p { color: var(--color-muted); font-size: 0.92rem; line-height: 1.5; }
+
+  .search-wrap { position: relative; margin-bottom: 8px; }
+  .search-wrap input {
+    width: 100%; padding: 14px 16px;
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius);
+    font-size: 1rem; font-family: var(--font-ui);
+    outline: none; transition: border-color .2s;
+  }
+  .search-wrap input:focus { border-color: var(--color-accent); }
+
+  .autocomplete-list {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    background: #fff; border: 1px solid var(--color-border);
+    border-radius: var(--radius); box-shadow: 0 4px 16px rgba(0,0,0,.1);
+    z-index: 100; max-height: 220px; overflow-y: auto;
+  }
+  .autocomplete-list li {
+    list-style: none; padding: 11px 16px; cursor: pointer;
+    font-size: 0.93rem; border-bottom: 1px solid #f0f0f0; transition: background .15s;
+  }
+  .autocomplete-list li:last-child { border-bottom: none; }
+  .autocomplete-list li:hover, .autocomplete-list li.active { background: #f5f0e8; }
+  .autocomplete-list li .addr-main { font-weight: 600; }
+  .autocomplete-list li .addr-sub { color: var(--color-muted); font-size: 0.82rem; }
+
+  .hint { font-size: 0.82rem; color: var(--color-muted); margin-bottom: 20px; padding-left: 4px; }
+
+  /* Status bar */
+  .status-bar {
+    display: none; align-items: center; gap: 10px;
+    padding: 12px 16px; border-radius: var(--radius);
+    font-size: 0.88rem; margin-bottom: 16px;
+  }
+  .status-bar.visible { display: flex; }
+  .status-bar.loading { background: #f0f4ff; border: 1px solid #c0d0f0; color: #334; }
+  .status-bar.error   { background: #fff8f0; border: 1px solid #f0c080; color: #7a5000; }
+  .status-bar.info    { background: #f0faf4; border: 1px solid #90d0a8; color: #1a5c35; }
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid #c0d0f0;
+    border-top-color: #5070c0; border-radius: 50%;
+    animation: spin .7s linear infinite; flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Results */
+  .result-section { display: none; }
+  .result-section.visible { display: block; }
+
+  .property-card {
+    background: #fafafa; border: 1px solid var(--color-border);
+    border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px;
+  }
+  .property-card h3 { font-family: var(--font); font-size: 1.05rem; color: var(--color-primary); margin-bottom: 4px; }
+  .lot-note {
+    font-size: 0.8rem; color: #c07000; background: #fff8e8;
+    border: 1px solid #f0d080; border-radius: 6px;
+    padding: 6px 10px; margin-bottom: 8px; display: none;
+  }
+  .lot-note.visible { display: block; }
+  .property-card .meta { font-size: 0.85rem; color: var(--color-muted); line-height: 1.7; }
+  .assessment-label { font-size: 0.8rem; color: var(--color-muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 10px; }
+  .assessment-val { font-size: 1.3rem; font-weight: 700; color: var(--color-primary); }
+
+  .tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 520px) { .tiers { grid-template-columns: 1fr; } }
+
+  .tier-card {
+    border-radius: var(--radius); padding: 20px;
+    border: 2px solid transparent; transition: transform .15s, box-shadow .15s;
+  }
+  .tier-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+  .tier-card.low  { background: var(--color-low-bg);  border-color: var(--color-low); }
+  .tier-card.high { background: var(--color-high-bg); border-color: var(--color-high); }
+
+  .tier-label { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 4px; }
+  .tier-card.low  .tier-label { color: var(--color-low); }
+  .tier-card.high .tier-label { color: var(--color-high); }
+
+  .tier-name { font-family: var(--font); font-size: 1.15rem; font-weight: 700; margin-bottom: 2px; }
+  .tier-card.low  .tier-name { color: var(--color-low); }
+  .tier-card.high .tier-name { color: var(--color-high); }
+
+  .tier-rate { font-size: 0.82rem; color: var(--color-muted); margin-bottom: 14px; }
+
+  .tier-tax { font-size: 2rem; font-weight: 800; line-height: 1; margin-bottom: 2px; }
+  .tier-card.low  .tier-tax { color: var(--color-low); }
+  .tier-card.high .tier-tax { color: var(--color-high); }
+  .tier-tax-label { font-size: 0.78rem; color: var(--color-muted); margin-bottom: 16px; }
+
+  .tier-divider { border: none; border-top: 1px solid rgba(0,0,0,.1); margin-bottom: 14px; }
+
+  .tier-services h4 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; margin-bottom: 8px; }
+  .tier-services ul { list-style: none; }
+  .tier-services ul li { font-size: 0.86rem; line-height: 1.4; padding: 4px 0 4px 20px; position: relative; }
+  .tier-services ul li::before { content: "✓"; position: absolute; left: 0; font-weight: 700; font-size: 0.8rem; }
+  .tier-card.low  .tier-services ul li::before { color: var(--color-low); }
+  .tier-card.high .tier-services ul li::before { color: var(--color-high); }
+
+  .disclaimer { margin-top: 24px; font-size: 0.78rem; color: var(--color-muted); text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="widget-header">
+  <h1>BID Tax Estimator</h1>
+  <p>Enter your property address to see your estimated annual BID assessment at each proposed funding level.</p>
+</div>
+
+<div class="search-wrap">
+  <input type="text" id="addressInput" placeholder="e.g. 609 H St NE"
+         autocomplete="off" aria-label="Property address" />
+  <ul class="autocomplete-list" id="autocompleteList" role="listbox" style="display:none"></ul>
+</div>
+<p class="hint">Type your address — select from suggestions, or press Enter to search.</p>
+
+<!-- Status messages (loading / error / parent-lot info) -->
+<div class="status-bar" id="statusBar">
+  <div class="spinner" id="statusSpinner" style="display:none"></div>
+  <span id="statusMsg"></span>
+</div>
+
+<!-- Results -->
+<div class="result-section" id="resultSection">
+
+  <div class="property-card">
+    <h3 id="propAddress"></h3>
+    <div class="lot-note" id="lotNote"></div>
+    <div class="meta">
+      <span id="propOwner"></span><br>
+      <span id="propType"></span>
+    </div>
+    <div class="assessment-label">Assessed Value</div>
+    <div class="assessment-val" id="propAssessment"></div>
+  </div>
+
+  <div class="tiers">
+    <div class="tier-card low">
+      <div class="tier-label">Option A</div>
+      <div class="tier-name"  id="lowName"></div>
+      <div class="tier-rate"  id="lowRateLabel"></div>
+      <div class="tier-tax"   id="lowTaxAmt"></div>
+      <div class="tier-tax-label">estimated annual BID assessment</div>
+      <hr class="tier-divider">
+      <div class="tier-services"><h4>Services Included</h4><ul id="lowServicesList"></ul></div>
+    </div>
+    <div class="tier-card high">
+      <div class="tier-label">Option B</div>
+      <div class="tier-name"  id="highName"></div>
+      <div class="tier-rate"  id="highRateLabel"></div>
+      <div class="tier-tax"   id="highTaxAmt"></div>
+      <div class="tier-tax-label">estimated annual BID assessment</div>
+      <hr class="tier-divider">
+      <div class="tier-services"><h4>Services Included</h4><ul id="highServicesList"></ul></div>
+    </div>
+  </div>
+
+  <p class="disclaimer" id="disclaimerText"></p>
+</div>
+
+
+<script>
+/* ================================================================
+   ✏️  EDIT THIS CONFIG SECTION TO UPDATE RATES AND SERVICES
+================================================================ */
+const CONFIG = {
+
+  low: {
+    name:     "Essential Services",          // Displayed on the card
+    rate:     0.12,                          // $ per $100 of assessed value
+    services: [
+      "Litter & trash removal along commercial corridors",
+      "Graffiti removal and surface cleaning",
+      "Landscaping and seasonal plantings",
+      "Basic corridor maintenance to supplement city services"
+    ]
+  },
+
+  high: {
+    name:     "Full Services",               // Displayed on the card
+    rate:     0.22,                          // $ per $100 of assessed value
+    services: [
+      "All Essential Services (see Option A)",
+      "Safety ambassadors patrolling the district",
+      "Business promotion and marketing campaigns",
+      "Homeless and social services outreach",
+      "Capital improvements: street furniture, decorative lighting"
+    ]
+  },
+
+  disclaimer: "Estimates are based on current assessed values and proposed BID rates. Final rates are subject to approval. Assessed values sourced from DC Office of Tax and Revenue."
+
+};
+/* ================================================================
+   END CONFIG — do not edit below this line unless you are
+   comfortable with JavaScript
+================================================================ */
+
+
+// ---- Embedded property data (212 commercial/mixed-use parcels) ----
+const PROPERTIES = [{"address": "1300 H ST NE", "search": "1300 H ST NE", "ssl": "10267001", "assessment": 1999000.0, "proptype": "Residential-Apartment (Walkup)", "owner": "DISTRICT OF COLUMBIA"}, {"address": "1104 H ST NE", "search": "1104 H ST NE", "ssl": "09810805", "assessment": 736380.0, "proptype": "Store-Miscellaneous", "owner": "WILSON LEE, LLC"}, {"address": "1253 H ST NE", "search": "1253 H ST NE", "ssl": "10040809", "assessment": 928000.0, "proptype": "Store-Restaurant", "owner": "7227 SE LLC"}, {"address": "1122 H ST NE", "search": "1122 H ST NE", "ssl": "09810803", "assessment": 904840.0, "proptype": "Store-Miscellaneous", "owner": "CHU, SON H"}, {"address": "1339 H ST NE", "search": "1339 H ST NE", "ssl": "10270826", "assessment": 1517500.0, "proptype": "Store-Miscellaneous", "owner": "BASANTI, RITA F"}, {"address": "1202 H ST NE", "search": "1202 H ST NE", "ssl": "10030810", "assessment": 478440.0, "proptype": "Store-Miscellaneous", "owner": "1200 H STREET NE PARTNERSHIP"}, {"address": "1126 H ST NE", "search": "1126 H ST NE", "ssl": "09810801", "assessment": 371400.0, "proptype": "Store-Small (1 Story)", "owner": "DAVID P STERN TRUSTEE"}, {"address": "1210 H ST NE", "search": "1210 H ST NE", "ssl": "10030835", "assessment": 950710.0, "proptype": "Store-Restaurant", "owner": "VBEACH PROPERTIES LLC"}, {"address": "1102 H ST NE", "search": "1102 H ST NE", "ssl": "09810806", "assessment": 1072670.0, "proptype": "Store-Miscellaneous", "owner": "S&J H STREET LLC"}, {"address": "1374 H ST NE", "search": "1374 H ST NE", "ssl": "10260829", "assessment": 758220.0, "proptype": "Store-Miscellaneous", "owner": "GARI, LLC"}, {"address": "1335 H ST NE", "search": "1335 H ST NE", "ssl": "10270824", "assessment": 1996470.0, "proptype": "Restaurants", "owner": "1335 H STREET LLC"}, {"address": "1128 H ST NE", "search": "1128 H ST NE", "ssl": "09810800", "assessment": 1421260.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "QUANDER, DIANNE"}, {"address": "1013 H ST NE", "search": "1013 H ST NE", "ssl": "09590812", "assessment": 1092710.0, "proptype": "Store-Miscellaneous", "owner": "1013 H STREET NE LLC"}, {"address": "645 H ST NE", "search": "645 H ST NE", "ssl": "08590839", "assessment": 31476580.0, "proptype": "Commercial-Office (Large)", "owner": "U S REIF 645 H STREET WASHINGTON DC LLC"}, {"address": "804 8TH ST NE", "search": "804 8TH ST NE", "ssl": "08890804", "assessment": 225860.0, "proptype": "Parking Lot-Special Purpose", "owner": "AMERICAN SECURITY CORPORATION"}, {"address": "1381 H ST NE", "search": "1381 H ST NE", "ssl": "10270835", "assessment": 1616110.0, "proptype": "Store-Miscellaneous", "owner": "1381 H ST LLC"}, {"address": "625 H ST NE", "search": "625 H ST NE", "ssl": "08590838", "assessment": 106618270.0, "proptype": "Residential-Multifamily (Misce", "owner": "MEPT ANTHOLOGY LLC"}, {"address": "1212 H ST NE", "search": "1212 H ST NE", "ssl": "10030836", "assessment": 851070.0, "proptype": "Store-Restaurant", "owner": "VBEACH PROPERTIES LLC"}, {"address": "601 H ST NE", "search": "601 H ST NE", "ssl": "08590837", "assessment": 19933260.0, "proptype": "Commercial-Office (Large)", "owner": "609 H ST NE BLDG PJV LLC"}, {"address": "1333 LINDEN CT NE", "search": "1333 LINDEN CT NE", "ssl": "10270845", "assessment": 1105460.0, "proptype": "Commercial-Garage-Vehicle Sale", "owner": "H STREET ALLEY PARTNERS LLC"}, {"address": "521 H ST NE", "search": "521 H ST NE", "ssl": "08330807", "assessment": 976650.0, "proptype": "Store-Miscellaneous", "owner": "R&S PROPERTY LLC"}, {"address": "1328 H ST NE", "search": "1328 H ST NE", "ssl": "10260832", "assessment": 1723650.0, "proptype": "Store-Miscellaneous", "owner": "EAST CHOP LLC"}, {"address": "701 2ND ST NE", "search": "701 2ND ST NE", "ssl": "07520862", "assessment": 149223220.0, "proptype": "Residential-Multifamily (Misce", "owner": "STATION TOWNHOUSES LLC"}, {"address": "1429 H ST NE", "search": "1429 H ST NE", "ssl": "10490806", "assessment": 565150.0, "proptype": "Store-Miscellaneous", "owner": "NEE LOU INC"}, {"address": "1431 H ST NE", "search": "1431 H ST NE", "ssl": "10490808", "assessment": 1648290.0, "proptype": "Store-Miscellaneous", "owner": "DILAWRI AND SONS LLC"}, {"address": "0819 7TH ST NE", "search": "819 7TH ST NE", "ssl": "08890808", "assessment": 877970.0, "proptype": "Parking Lot-Special Purpose", "owner": "PILGRIM BAPTIST CHURCH"}, {"address": "1300 H ST NE", "search": "1300 H ST NE", "ssl": "10260843", "assessment": 904350.0, "proptype": "Residential-Apartment (Walkup)", "owner": "DISTRICT OF COLUMBIA"}, {"address": "1300 H ST NE", "search": "1300 H ST NE", "ssl": "10260842", "assessment": 646710.0, "proptype": "Residential-Apartment (Walkup)", "owner": "DISTRICT OF COLUMBIA"}, {"address": "900 H ST NE", "search": "900 H ST NE", "ssl": "09330805", "assessment": 1907000.0, "proptype": "Store-Small (1 Story)", "owner": "900 H STREET NE LLC"}, {"address": "1351 H ST NE", "search": "1351 H ST NE", "ssl": "10270164", "assessment": 1434510.0, "proptype": "Store-Miscellaneous", "owner": "WCP 1351 H STREET NE LLC"}, {"address": "808 5TH ST NE", "search": "808 5TH ST NE", "ssl": "08080048", "assessment": 1068330.0, "proptype": "Residential-Multi-Family (3 to", "owner": "ILCHI, KAMBIZ"}, {"address": "912 H ST NE", "search": "912 H ST NE", "ssl": "09330064", "assessment": 1240760.0, "proptype": "Store-Miscellaneous", "owner": "912 IMPACT LLC"}, {"address": "1370 H ST NE", "search": "1370 H ST NE", "ssl": "10260176", "assessment": 900060.0, "proptype": "Store-Miscellaneous", "owner": "ANGEL OAK BRIDGE LENDING FUND"}, {"address": "812 5TH ST NE", "search": "812 5TH ST NE", "ssl": "08080046", "assessment": 1253030.0, "proptype": "Residential-Multi-Family (3 to", "owner": "CHAMBERS, COLLETTE F"}, {"address": "820 8TH ST NE", "search": "820 8TH ST NE", "ssl": "08890038", "assessment": 774440.0, "proptype": "Residential-Multi-Family (3 to", "owner": "TS OF THE PILGRIM BAPTIST CH INC"}, {"address": "1380 H ST NE", "search": "1380 H ST NE", "ssl": "10260160", "assessment": 1185260.0, "proptype": "Restaurants", "owner": "JEMALS GREG LLC"}, {"address": "418 H ST NE", "search": "418 H ST NE", "ssl": "08080050", "assessment": 1345730.0, "proptype": "Store-Miscellaneous", "owner": "418 H STREET NE TRUST"}, {"address": "1023 H ST NE", "search": "1023 H ST NE", "ssl": "09590018", "assessment": 678090.0, "proptype": "Store-Small (1 Story)", "owner": "TANIMOWO, THOMAS"}, {"address": "1363 H ST NE", "search": "1363 H ST NE", "ssl": "10270098", "assessment": 656840.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "NESSIBU, ABRAHAM"}, {"address": "331 H ST NE", "search": "331 H ST NE", "ssl": "07770049", "assessment": 853940.0, "proptype": "Store-Miscellaneous", "owner": "331 H STREET LLC"}, {"address": "1361 FLORIDA AVE NE", "search": "1361 FLORIDA AVE NE", "ssl": "10260141", "assessment": 867280.0, "proptype": "Residential-Mixed Use", "owner": "1361 FLORIDA AVE LLC"}, {"address": "718 H ST NE", "search": "718 H ST NE", "ssl": "08890003", "assessment": 663450.0, "proptype": "Store-Small (1 Story)", "owner": "WELCH FAMILY LTD PTRNSHP"}, {"address": "1385 H ST NE", "search": "1385 H ST NE", "ssl": "10270162", "assessment": 2438560.0, "proptype": "Store-Miscellaneous", "owner": "ROBBINS, LEON"}, {"address": "1332 G ST NE", "search": "1332 G ST NE", "ssl": "10270050", "assessment": 367860.0, "proptype": "Commercial-Garage-Vehicle Sale", "owner": "H STREET ALLEY PARTNERS LLC"}, {"address": "705 H ST NE", "search": "705 H ST NE", "ssl": "08900025", "assessment": 797180.0, "proptype": "Store-Miscellaneous", "owner": "705 H STREET LLC"}, {"address": "411 H ST NE", "search": "411 H ST NE", "ssl": "08090069", "assessment": 2151050.0, "proptype": "Store-Miscellaneous", "owner": "DATTA, GUGGAN"}, {"address": "1348 H ST NE", "search": "1348 H ST NE", "ssl": "10260174", "assessment": 5488070.0, "proptype": "Store-Miscellaneous", "owner": "TRESINOVA LLC"}, {"address": "1306 H ST NE", "search": "1306 H ST NE", "ssl": "10260096", "assessment": 875750.0, "proptype": "Store-Small (1 Story)", "owner": "KNOB HILL LLC"}, {"address": "420 H ST NE", "search": "420 H ST NE", "ssl": "08080049", "assessment": 1498450.0, "proptype": "Store-Miscellaneous", "owner": "420 H STREET NE LLC"}, {"address": "1362 H ST NE", "search": "1362 H ST NE", "ssl": "10260069", "assessment": 992050.0, "proptype": "Store-Restaurant", "owner": "MARILUG LLC"}, {"address": "1413 H ST NE", "search": "1413 H ST NE", "ssl": "10490027", "assessment": 909420.0, "proptype": "Store-Miscellaneous", "owner": "DIOP, AHMADOU B"}, {"address": "712 H ST NE", "search": "712 H ST NE", "ssl": "08890006", "assessment": 854200.0, "proptype": "Store-Miscellaneous", "owner": "FORMANT, JOHN C"}, {"address": "703 H ST NE", "search": "703 H ST NE", "ssl": "08900024", "assessment": 1338110.0, "proptype": "Store-Miscellaneous", "owner": "RAHIMI, ABDUL J"}, {"address": "1110 H ST NE", "search": "1110 H ST NE", "ssl": "09810084", "assessment": 847690.0, "proptype": "Store-Miscellaneous", "owner": "WILLOUGHBY, EVANS"}, {"address": "709 H ST NE", "search": "709 H ST NE", "ssl": "08900027", "assessment": 1096160.0, "proptype": "Store-Miscellaneous", "owner": "FORMANT, KELLY A"}, {"address": "502 H ST NE", "search": "502 H ST NE", "ssl": "08320018", "assessment": 992380.0, "proptype": "Store-Miscellaneous", "owner": "502-504 H STREET GP"}, {"address": "1001 H ST NE", "search": "1001 H ST NE", "ssl": "09590075", "assessment": 2262730.0, "proptype": "Store-Miscellaneous", "owner": "ALI BOYZ LLC"}, {"address": "738 11TH ST NE", "search": "738 11TH ST NE", "ssl": "09590056", "assessment": 1344460.0, "proptype": "Residential-Multi-Family (3 to", "owner": "LUCAS, BOBBY"}, {"address": "1118 H ST NE", "search": "1118 H ST NE", "ssl": "09810080", "assessment": 1676840.0, "proptype": "Store-Restaurant", "owner": "HUANG, XIAO C"}, {"address": "710 H ST NE", "search": "710 H ST NE", "ssl": "08890007", "assessment": 1135650.0, "proptype": "Store-Miscellaneous", "owner": "GAINES, PERINA V"}, {"address": "512 H ST NE", "search": "512 H ST NE", "ssl": "08320013", "assessment": 1404930.0, "proptype": "Store-Small (1 Story)", "owner": "SMITH ENTERPRISE INVESTMENTS LLC"}, {"address": "666 G ST NE", "search": "666 G ST NE", "ssl": "08590140", "assessment": 946760.0, "proptype": "Residential-Multi-Family (3 to", "owner": "BENJAMIN, MEDEA S"}, {"address": "506 H ST NE", "search": "506 H ST NE", "ssl": "08320016", "assessment": 1615090.0, "proptype": "Store-Miscellaneous", "owner": "SALMON EQUITY LLC"}, {"address": "1025 H ST NE", "search": "1025 H ST NE", "ssl": "09590017", "assessment": 1399930.0, "proptype": "Store-Small (1 Story)", "owner": "INDOCHINE CUISINE AND LOUNGE LLC"}, {"address": "410 H ST NE", "search": "410 H ST NE", "ssl": "08080005", "assessment": 1245450.0, "proptype": "Store-Miscellaneous", "owner": "BERNHARDT, DAVID"}, {"address": "707 H ST NE", "search": "707 H ST NE", "ssl": "08900026", "assessment": 1162050.0, "proptype": "Store-Miscellaneous", "owner": "JAMIL, A"}, {"address": "1353 H ST NE", "search": "1353 H ST NE", "ssl": "10270134", "assessment": 1302530.0, "proptype": "Restaurants", "owner": "DC9 LLC"}, {"address": "806 8TH ST NE", "search": "806 8TH ST NE", "ssl": "08890033", "assessment": 993170.0, "proptype": "Residential-Apartment (Walkup)", "owner": "SMITH, KEVIN G"}, {"address": "1252 H ST NE", "search": "1252 H ST NE", "ssl": "10030172", "assessment": 1311270.0, "proptype": "Store-Miscellaneous", "owner": "1252 H STREET NE LLC"}, {"address": "416 H ST NE", "search": "416 H ST NE", "ssl": "08080051", "assessment": 960710.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "CUMMINGS, STEVEN M"}, {"address": "405 H ST NE", "search": "405 H ST NE", "ssl": "08090027", "assessment": 909760.0, "proptype": "Store-Miscellaneous", "owner": "FANAROFF/STEPPA HAMPTON 1 LLC"}, {"address": "1427 H ST NE", "search": "1427 H ST NE", "ssl": "10490034", "assessment": 1111400.0, "proptype": "Store-Miscellaneous", "owner": "MOGHIM, MICHEAL"}, {"address": "1224 H ST NE", "search": "1224 H ST NE", "ssl": "10030030", "assessment": 1180220.0, "proptype": "Fast Food Restaurant", "owner": "ALBATROSS CAPITAL LLC"}, {"address": "810 H ST NE", "search": "810 H ST NE", "ssl": "09110051", "assessment": 1147360.0, "proptype": "Store-Miscellaneous", "owner": "FORMANT, KELLY A"}, {"address": "1421 H ST NE", "search": "1421 H ST NE", "ssl": "10490031", "assessment": 1001000.0, "proptype": "Store-Restaurant", "owner": "H STREET PROPERTIES, LLC"}, {"address": "1366 H ST NE", "search": "1366 H ST NE", "ssl": "10260152", "assessment": 907770.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "LEE, IVAN R"}, {"address": "711 H ST NE", "search": "711 H ST NE", "ssl": "08900028", "assessment": 1049000.0, "proptype": "Store-Miscellaneous", "owner": "RAHIMI, ABDUL F"}, {"address": "721 H ST NE", "search": "721 H ST NE", "ssl": "08900069", "assessment": 4888530.0, "proptype": "Store-Miscellaneous", "owner": "775 HOLDINGS LLC"}, {"address": "528 H ST NE", "search": "528 H ST NE", "ssl": "08320009", "assessment": 1798350.0, "proptype": "Store-Miscellaneous", "owner": "LOT INVESTMENTS LLC"}, {"address": "816 H ST NE", "search": "816 H ST NE", "ssl": "09110059", "assessment": 2957070.0, "proptype": "Store-Miscellaneous", "owner": "BELLOS LLC"}, {"address": "822 H ST NE", "search": "822 H ST NE", "ssl": "09110011", "assessment": 1138820.0, "proptype": "Store-Miscellaneous", "owner": "ROBBINS, PEGGY"}, {"address": "1335 LINDEN CT NE", "search": "1335 LINDEN CT NE", "ssl": "10270056", "assessment": 531460.0, "proptype": "Commercial-Garage-Vehicle Sale", "owner": "PETERSON, DAVID A"}, {"address": "1411 H ST NE", "search": "1411 H ST NE", "ssl": "10490026", "assessment": 1209980.0, "proptype": "Store-Miscellaneous", "owner": "DMCC PROPERTIES LLC"}, {"address": "1207 H ST NE", "search": "1207 H ST NE", "ssl": "10040342", "assessment": 5704600.0, "proptype": "Store-Miscellaneous", "owner": "WCP 1207 H STREET LLC"}, {"address": "808 14TH ST NE", "search": "808 14TH ST NE", "ssl": "10260183", "assessment": 3031080.0, "proptype": "Residential-Multi-Family (3 to", "owner": "ON FOURTEENTH N E LLC"}, {"address": "1342 H ST NE", "search": "1342 H ST NE", "ssl": "10260079", "assessment": 868500.0, "proptype": "Store-Small (1 Story)", "owner": "LANGSTON PARC LLC"}, {"address": "406 H ST NE", "search": "406 H ST NE", "ssl": "08080007", "assessment": 2147400.0, "proptype": "Store-Miscellaneous", "owner": "JENKINS HILL PROPERTIES LLC"}, {"address": "808 12TH ST NE", "search": "808 12TH ST NE", "ssl": "09810129", "assessment": 1587100.0, "proptype": "Residential-Multi-Family (3 to", "owner": "LOUISE NANKIINGA TRUSTEE"}, {"address": "1361 H ST NE", "search": "1361 H ST NE", "ssl": "10270097", "assessment": 513750.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "WILSON, JUNE T"}, {"address": "1417 H ST NE", "search": "1417 H ST NE", "ssl": "10490029", "assessment": 548000.0, "proptype": "Store-Barber-Beauty Shop", "owner": "TREATS LTD"}, {"address": "408 H ST NE", "search": "408 H ST NE", "ssl": "08080006", "assessment": 1245450.0, "proptype": "Store-Miscellaneous", "owner": "SOMERSET INVESTMENTS LLC"}, {"address": "414 H ST NE", "search": "414 H ST NE", "ssl": "08080003", "assessment": 1371360.0, "proptype": "Store-Miscellaneous", "owner": "RAHIMI INVESTMENTS INC"}, {"address": "335 H ST NE", "search": "335 H ST NE", "ssl": "07770051", "assessment": 2018530.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "H STREET DEVELOPMENT GROUP LLC"}, {"address": "1371 H ST NE", "search": "1371 H ST NE", "ssl": "10270166", "assessment": 2912220.0, "proptype": "Store-Small (1 Story)", "owner": "SALVATION ARTS LLC"}, {"address": "1244 H ST NE", "search": "1244 H ST NE", "ssl": "10030180", "assessment": 1536740.0, "proptype": "Store-Miscellaneous", "owner": "1244 H INVESTOR LLC"}, {"address": "1021 H ST NE", "search": "1021 H ST NE", "ssl": "09590019", "assessment": 678090.0, "proptype": "Store-Small (1 Story)", "owner": "TANIMOWO, THOMAS A"}, {"address": "1016 H ST NE", "search": "1016 H ST NE", "ssl": "09580058", "assessment": 1730772.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "1000-1016 H ST NE LLC"}, {"address": "1232 H ST NE", "search": "1232 H ST NE", "ssl": "10030806", "assessment": 649840.0, "proptype": "Store-Barber-Beauty Shop", "owner": "POWELL, BERNETTE"}, {"address": "1245 H ST NE", "search": "1245 H ST NE", "ssl": "10040807", "assessment": 2191720.0, "proptype": "Restaurants", "owner": "1245 H STREET NORTHEAST LLC"}, {"address": "918 H ST NE", "search": "918 H ST NE", "ssl": "09330801", "assessment": 3136210.0, "proptype": "Store-Miscellaneous", "owner": "FLAGSHIP DEVELOP LLC"}, {"address": "1236 H ST NE", "search": "1236 H ST NE", "ssl": "10030804", "assessment": 1089440.0, "proptype": "Store-Miscellaneous", "owner": "H STREET GROUP INCORPORATED"}, {"address": "906 H ST NE", "search": "906 H ST NE", "ssl": "09330800", "assessment": 3049310.0, "proptype": "Store-Miscellaneous", "owner": "HIPS"}, {"address": "1300 H ST NE", "search": "1300 H ST NE", "ssl": "10267000", "assessment": 1999000.0, "proptype": "Residential-Apartment (Walkup)", "owner": "DISTRICT OF COLUMBIA"}, {"address": "1251 H ST NE", "search": "1251 H ST NE", "ssl": "10040808", "assessment": 1356410.0, "proptype": "Store-Restaurant", "owner": "GOGOS, BASIL C"}, {"address": "1240 H ST NE", "search": "1240 H ST NE", "ssl": "10030802", "assessment": 748440.0, "proptype": "Store-Miscellaneous", "owner": "FAROOK, ABDUL S"}, {"address": "1300 H ST NE", "search": "1300 H ST NE", "ssl": "10260841", "assessment": 1230160.0, "proptype": "Store-Small (1 Story)", "owner": "1300 RETAIL LLC"}, {"address": "644 H ST NE", "search": "644 H ST NE", "ssl": "08580803", "assessment": 1823470.0, "proptype": "Store-Restaurant", "owner": "644 H ST (WITP) LLC"}, {"address": "417 H ST NE", "search": "417 H ST NE", "ssl": "08090818", "assessment": 1240650.0, "proptype": "Store-Miscellaneous", "owner": "BERNHARDT, DAVID"}, {"address": "717 5TH ST NE", "search": "717 5TH ST NE", "ssl": "08330802", "assessment": 1203650.0, "proptype": "Residential-Mixed Use", "owner": "WARD, AUDREY"}, {"address": "1387 H ST NE", "search": "1387 H ST NE", "ssl": "10270839", "assessment": 1241560.0, "proptype": "Store-Miscellaneous", "owner": "1387 H STREET, LLC"}, {"address": "415 H ST NE", "search": "415 H ST NE", "ssl": "08090810", "assessment": 1156620.0, "proptype": "Store-Miscellaneous", "owner": "SEYOUM, AWETASH"}, {"address": "822 4TH ST NE", "search": "822 4TH ST NE", "ssl": "07760810", "assessment": 1515260.0, "proptype": "Residential-Apartment (Walkup)", "owner": "KIM GRACE"}, {"address": "1337 H ST NE", "search": "1337 H ST NE", "ssl": "10270825", "assessment": 1780800.0, "proptype": "Commercial-Garage-Vehicle Sale", "owner": "SMITH, ROSA L"}, {"address": "1106 H ST NE", "search": "1106 H ST NE", "ssl": "09810804", "assessment": 799910.0, "proptype": "Store-Barber-Beauty Shop", "owner": "HILLMAN, BRENDA"}, {"address": "1376 H ST NE", "search": "1376 H ST NE", "ssl": "10260840", "assessment": 508220.0, "proptype": "Store-Miscellaneous", "owner": "TELESOLV CONSULTING LLC"}, {"address": "1010 G ST NE", "search": "1010 G ST NE", "ssl": "09590824", "assessment": 2284300.0, "proptype": "Residential-Apartment (Walkup)", "owner": "SQL 1010 G L.L.C."}, {"address": "1230 H ST NE", "search": "1230 H ST NE", "ssl": "10030807", "assessment": 930380.0, "proptype": "Store-Barber-Beauty Shop", "owner": "L MATTHEWS LLC"}, {"address": "1121 H ST NE", "search": "1121 H ST NE", "ssl": "09820823", "assessment": 4588730.0, "proptype": "Store-Miscellaneous", "owner": "SECOND FSK ASSOCIATES LLC"}, {"address": "804 8TH ST NE", "search": "804 8TH ST NE", "ssl": "08890805", "assessment": 225860.0, "proptype": "Parking Lot-Special Purpose", "owner": "AMERICAN SECURITY CORPORATION"}, {"address": "1238 H ST NE", "search": "1238 H ST NE", "ssl": "10030803", "assessment": 859710.0, "proptype": "Store-Miscellaneous", "owner": "DECO 1238 H STREET LLC"}, {"address": "1379 H ST NE", "search": "1379 H ST NE", "ssl": "10270834", "assessment": 469240.0, "proptype": "Store-Barber-Beauty Shop", "owner": "LUU, NHAN"}, {"address": "1365 H ST NE", "search": "1365 H ST NE", "ssl": "10270829", "assessment": 2363820.0, "proptype": "Store-Small (1 Story)", "owner": "CENTURY THEATER LLC"}, {"address": "924 H ST NE", "search": "924 H ST NE", "ssl": "09330802", "assessment": 1541270.0, "proptype": "Store-Miscellaneous", "owner": "FORMANT, JOHN C"}, {"address": "1234 H ST NE", "search": "1234 H ST NE", "ssl": "10030805", "assessment": 942140.0, "proptype": "Store-Miscellaneous", "owner": "1234 H STREET LLC"}, {"address": "1100 H ST NE", "search": "1100 H ST NE", "ssl": "09810807", "assessment": 1020360.0, "proptype": "Store-Miscellaneous", "owner": "IN HYON CHUNG TRUSTEE"}, {"address": "1200 H ST NE", "search": "1200 H ST NE", "ssl": "10030811", "assessment": 876930.0, "proptype": "Store-Miscellaneous", "owner": "1200 H STREET NE PARTNERSHIP"}, {"address": "517 H ST NE", "search": "517 H ST NE", "ssl": "08330805", "assessment": 1170070.0, "proptype": "Store-Miscellaneous", "owner": "ANNIE CHEN TRUSTEE"}, {"address": "1354 H ST NE", "search": "1354 H ST NE", "ssl": "10260139", "assessment": 725220.0, "proptype": "Store-Miscellaneous", "owner": "WINBERG CARL O"}, {"address": "309 H ST NE", "search": "309 H ST NE", "ssl": "07770090", "assessment": 1945640.0, "proptype": "Store-Miscellaneous", "owner": "INVESTHOME 309 H LLC"}, {"address": "1320 H ST NE", "search": "1320 H ST NE", "ssl": "10260089", "assessment": 1180120.0, "proptype": "Store-Restaurant", "owner": "SAM HYON CHUNG TRUSTEE"}, {"address": "714 H ST NE", "search": "714 H ST NE", "ssl": "08890005", "assessment": 856250.0, "proptype": "Store-Miscellaneous", "owner": "LU, YANG C"}, {"address": "500 H ST NE", "search": "500 H ST NE", "ssl": "08320019", "assessment": 1993160.0, "proptype": "Store-Miscellaneous", "owner": "VIVIAN NGUYEN TRUSTEE"}, {"address": "409 H ST NE", "search": "409 H ST NE", "ssl": "08090029", "assessment": 1226020.0, "proptype": "Store-Miscellaneous", "owner": "NG, YUN C"}, {"address": "738 5TH ST NE", "search": "738 5TH ST NE", "ssl": "08090033", "assessment": 859670.0, "proptype": "Residential-Multi-Family (3 to", "owner": "FIFTH STREET DEVELOPMENT LLC"}, {"address": "1017 H ST NE", "search": "1017 H ST NE", "ssl": "09590021", "assessment": 1262160.0, "proptype": "Store-Small (1 Story)", "owner": "H2 DEVELOPMENT LLC"}, {"address": "1015 H ST NE", "search": "1015 H ST NE", "ssl": "09590022", "assessment": 2121070.0, "proptype": "Store-Miscellaneous", "owner": "JAVA LLC"}, {"address": "333 H ST NE", "search": "333 H ST NE", "ssl": "07770050", "assessment": 1006960.0, "proptype": "Residential-Multifamily (Misce", "owner": "333 H STREET LLC"}, {"address": "820 H ST NE", "search": "820 H ST NE", "ssl": "09110057", "assessment": 1449270.0, "proptype": "Store-Miscellaneous", "owner": "STEWART, CHARLES A"}, {"address": "1309 H ST NE", "search": "1309 H ST NE", "ssl": "10270088", "assessment": 851820.0, "proptype": "Store-Small (1 Story)", "owner": "VIRGINIA CAPITAL HOLDINGS LLC"}, {"address": "1307 H ST NE", "search": "1307 H ST NE", "ssl": "10270087", "assessment": 977450.0, "proptype": "Store-Barber-Beauty Shop", "owner": "1305 H STREET LLC"}, {"address": "1419 H ST NE", "search": "1419 H ST NE", "ssl": "10490030", "assessment": 551440.0, "proptype": "Store-Miscellaneous", "owner": "SEDIGHEH KAZEMZADEH TRUSTEE"}, {"address": "1116 H ST NE", "search": "1116 H ST NE", "ssl": "09810081", "assessment": 2026460.0, "proptype": "Store-Restaurant", "owner": "INDUSTRIOUS H STREET LLC"}, {"address": "1250 H ST NE", "search": "1250 H ST NE", "ssl": "10030177", "assessment": 1227820.0, "proptype": "Store-Miscellaneous", "owner": "HAMAL LLC"}, {"address": "504 H ST NE", "search": "504 H ST NE", "ssl": "08320017", "assessment": 1001820.0, "proptype": "Store-Miscellaneous", "owner": "502-504 H STREET GP"}, {"address": "1242 H ST NE", "search": "1242 H ST NE", "ssl": "10030022", "assessment": 993020.0, "proptype": "Store-Miscellaneous", "owner": "SMG DEVELOPMENT GROUP LLC"}, {"address": "1214 H ST NE", "search": "1214 H ST NE", "ssl": "10030035", "assessment": 2017990.0, "proptype": "Residential-Multifamily (Misce", "owner": "TRES INVESTMENTS LLC"}, {"address": "1326 H ST NE", "search": "1326 H ST NE", "ssl": "10260086", "assessment": 917620.0, "proptype": "Store-Miscellaneous", "owner": "EAST CHOP LLC"}, {"address": "1339 REAR H ST NE", "search": "1339 H ST NE", "ssl": "10270082", "assessment": 328510.0, "proptype": "Commercial-Garage-Vehicle Sale", "owner": "H STREET ALLEY PARTNERS LLC"}, {"address": "716 H ST NE", "search": "716 H ST NE", "ssl": "08890004", "assessment": 685020.0, "proptype": "Store-Miscellaneous", "owner": "JOHN M SWAGART JR"}, {"address": "1108 H ST NE", "search": "1108 H ST NE", "ssl": "09810085", "assessment": 1424960.0, "proptype": "Store-Miscellaneous", "owner": "LRS HOLDINGD LLC"}, {"address": "1425 H ST NE", "search": "1425 H ST NE", "ssl": "10490033", "assessment": 1029330.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "MAMIE D AKPENEYE TRUSTEE"}, {"address": "337 H ST NE", "search": "337 H ST NE", "ssl": "07770052", "assessment": 1764200.0, "proptype": "Store-Miscellaneous", "owner": "JONES, LOIS A"}, {"address": "722 H ST NE", "search": "722 H ST NE", "ssl": "08890001", "assessment": 2808080.0, "proptype": "Commercial-Banks-Financial", "owner": "AMERICAN SECURITY CORPORATION"}, {"address": "1333 H ST NE", "search": "1333 H ST NE", "ssl": "10270158", "assessment": 39960730.0, "proptype": "Theaters and Entertainment", "owner": "ATLAS PERFORMING ARTS CENTER"}, {"address": "1378 H ST NE", "search": "1378 H ST NE", "ssl": "10260179", "assessment": 1386360.0, "proptype": "Restaurants", "owner": "PENN FOREST LLC"}, {"address": "914 H ST NE", "search": "914 H ST NE", "ssl": "09330063", "assessment": 806350.0, "proptype": "Store-Miscellaneous", "owner": "LAH01 LLC"}, {"address": "1350 H ST NE", "search": "1350 H ST NE", "ssl": "10260138", "assessment": 1284380.0, "proptype": "Store-Miscellaneous", "owner": "LIBERTY DEVELOPMENT GROUP LLC"}, {"address": "412 H ST NE", "search": "412 H ST NE", "ssl": "08080004", "assessment": 1434870.0, "proptype": "Store-Miscellaneous", "owner": "OUTLAW PHYLLIS J"}, {"address": "1322 H ST NE", "search": "1322 H ST NE", "ssl": "10260088", "assessment": 998550.0, "proptype": "Store-Miscellaneous", "owner": "SMG DEVELOPMENT GROUP LLC"}, {"address": "1358 H ST NE", "search": "1358 H ST NE", "ssl": "10260071", "assessment": 941870.0, "proptype": "Store-Miscellaneous", "owner": "LIBERTY DEVELOPMENT GROUP INC"}, {"address": "1019 H ST NE", "search": "1019 H ST NE", "ssl": "09590020", "assessment": 678090.0, "proptype": "Store-Small (1 Story)", "owner": "TANIMOWO, THOMAS A"}, {"address": "701 H ST NE", "search": "701 H ST NE", "ssl": "08900023", "assessment": 2229100.0, "proptype": "Store-Small (1 Story)", "owner": "701 H STREET NE LLC"}, {"address": "523 H ST NE", "search": "523 H ST NE", "ssl": "08330001", "assessment": 1815410.0, "proptype": "Store-Restaurant", "owner": "523 H STREET NE LLC"}, {"address": "508 H ST NE", "search": "508 H ST NE", "ssl": "08320015", "assessment": 1525850.0, "proptype": "Store-Miscellaneous", "owner": "CLEARVIEW 508 LLC"}, {"address": "1318 H ST NE", "search": "1318 H ST NE", "ssl": "10260090", "assessment": 1034980.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "BISHOP S C MADISON TRUSTEE"}, {"address": "818 H ST NE", "search": "818 H ST NE", "ssl": "09110058", "assessment": 601830.0, "proptype": "Store-Miscellaneous", "owner": "YU PROPERTIES LLC"}, {"address": "910 H ST NE", "search": "910 H ST NE", "ssl": "09330008", "assessment": 1155950.0, "proptype": "Store-Miscellaneous", "owner": "910 H STREET NE LLC"}, {"address": "515 H ST NE", "search": "515 H ST NE", "ssl": "08330005", "assessment": 796730.0, "proptype": "Store-Barber-Beauty Shop", "owner": "THE THELMA L NELSON REVOCABLE LIVING TRUST"}, {"address": "400 H ST NE", "search": "400 H ST NE", "ssl": "08080010", "assessment": 2112210.0, "proptype": "Restaurants", "owner": "LBS PROPERTIES LLC"}, {"address": "1206 H ST NE", "search": "1206 H ST NE", "ssl": "10030039", "assessment": 918910.0, "proptype": "Store-Restaurant", "owner": "1206 H ST LLC"}, {"address": "733 11TH ST NE", "search": "733 11TH ST NE", "ssl": "09820071", "assessment": 1790830.0, "proptype": "Store-Miscellaneous", "owner": "RRA 733 11TH LLC"}, {"address": "812 H ST NE", "search": "812 H ST NE", "ssl": "09110075", "assessment": 1585490.0, "proptype": "Store-Miscellaneous", "owner": "812/814 H ST NE LLC"}, {"address": "1355 H ST NE", "search": "1355 H ST NE", "ssl": "10270178", "assessment": 2899840.0, "proptype": "Restaurants", "owner": "1355-1359 H ST NE LLC"}, {"address": "1255 H ST NE", "search": "1255 H ST NE", "ssl": "10040343", "assessment": 3170040.0, "proptype": "Store-Miscellaneous", "owner": "NAYNA REAL ESTATE DEVELOPMENT LLC"}, {"address": "1341 H ST NE", "search": "1341 H ST NE", "ssl": "10270159", "assessment": 5313360.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "BEARDEN ARTS LLC"}, {"address": "740 5TH ST NE", "search": "740 5TH ST NE", "ssl": "08090032", "assessment": 901150.0, "proptype": "Residential-Multi-Family (3 to", "owner": "GROSSMAN, GRAHAM"}, {"address": "1415 H ST NE", "search": "1415 H ST NE", "ssl": "10490028", "assessment": 599360.0, "proptype": "Store-Small (1 Story)", "owner": "DOHERTY, JAMES K"}, {"address": "1305 H ST NE", "search": "1305 H ST NE", "ssl": "10270086", "assessment": 1152600.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "1305 H STREET LLC"}, {"address": "1216 H ST NE", "search": "1216 H ST NE", "ssl": "10030175", "assessment": 1977950.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "WASHINGTON WANBAO INC"}, {"address": "H ST NE", "search": "H ST NE", "ssl": "10260072", "assessment": 379200.0, "proptype": "Parking Lot-Special Purpose", "owner": "WINBERG CARL O"}, {"address": "1208 H ST NE", "search": "1208 H ST NE", "ssl": "10030038", "assessment": 1130320.0, "proptype": "Store-Miscellaneous", "owner": "S&J H STREET LLC"}, {"address": "1005 H ST NE", "search": "1005 H ST NE", "ssl": "09590063", "assessment": 1472180.0, "proptype": "Store-Miscellaneous", "owner": "SALEEM, ANWAR"}, {"address": "1368 H ST NE", "search": "1368 H ST NE", "ssl": "10260175", "assessment": 964920.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "1368 IMPACT LLC"}, {"address": "1320 G ST NE", "search": "1320 G ST NE", "ssl": "10270107", "assessment": 1384620.0, "proptype": "Residential-Multi-Family (3 to", "owner": "MELELAND LLC"}, {"address": "401 H ST NE", "search": "401 H ST NE", "ssl": "08090025", "assessment": 1473330.0, "proptype": "Store-Miscellaneous", "owner": "MABRY HOWARD"}, {"address": "516 H ST NE", "search": "516 H ST NE", "ssl": "08320011", "assessment": 1330400.0, "proptype": "Store-Miscellaneous", "owner": "S & M LLC"}, {"address": "1226 H ST NE", "search": "1226 H ST NE", "ssl": "10030171", "assessment": 1220130.0, "proptype": "Fast Food Restaurant", "owner": "YOUNG & JUNG LLC"}, {"address": "717 H ST NE", "search": "717 H ST NE", "ssl": "08900070", "assessment": 3131780.0, "proptype": "Store-Miscellaneous", "owner": "ST ALBANS INVESTMENTS LLC"}, {"address": "315 H ST NE", "search": "315 H ST NE", "ssl": "07770092", "assessment": 31174610.0, "proptype": "Residential-Multifamily (Misce", "owner": "315 H LLC"}, {"address": "407 H ST NE", "search": "407 H ST NE", "ssl": "08090028", "assessment": 870000.0, "proptype": "Store-Miscellaneous", "owner": "EMES LP"}, {"address": "804 H ST NE", "search": "804 H ST NE", "ssl": "09110054", "assessment": 2183150.0, "proptype": "Store-Miscellaneous", "owner": "ST ALBANS INVESTMENTS LLC"}, {"address": "1340 H ST NE", "search": "1340 H ST NE", "ssl": "10260080", "assessment": 1260550.0, "proptype": "Store-Barber-Beauty Shop", "owner": "ELLISON, CURTIS Q"}, {"address": "403 H ST NE", "search": "403 H ST NE", "ssl": "08090026", "assessment": 1168040.0, "proptype": "Store-Miscellaneous", "owner": "EMES LP"}, {"address": "1324 H ST NE", "search": "1324 H ST NE", "ssl": "10260087", "assessment": 912400.0, "proptype": "Store-Miscellaneous", "owner": "EAST CHOP LLC"}, {"address": "800 H ST NE", "search": "800 H ST NE", "ssl": "09110074", "assessment": 3103490.0, "proptype": "Commercial-Banks-Financial", "owner": "PNC BANK NATIONAL ASSOC"}, {"address": "1360 H ST NE", "search": "1360 H ST NE", "ssl": "10260070", "assessment": 1242970.0, "proptype": "Store-Restaurant", "owner": "JEMALS 1360 H LLC"}, {"address": "421 H ST NE", "search": "421 H ST NE", "ssl": "08090031", "assessment": 1010290.0, "proptype": "Store-Miscellaneous", "owner": "BERNHARDT, DAVID"}, {"address": "402 H ST NE", "search": "402 H ST NE", "ssl": "08080085", "assessment": 1946030.0, "proptype": "Store-Miscellaneous", "owner": "FORMANT, JOHN C"}, {"address": "1308 H ST NE", "search": "1308 H ST NE", "ssl": "10260095", "assessment": 853850.0, "proptype": "Store-Small (1 Story)", "owner": "KNOB HILL LLC"}, {"address": "1007 H ST NE", "search": "1007 H ST NE", "ssl": "09590070", "assessment": 2102850.0, "proptype": "Store-Small (1 Story)", "owner": "1007-1009 H STREET NE LLC"}, {"address": "806 H ST NE", "search": "806 H ST NE", "ssl": "09110072", "assessment": 1623620.0, "proptype": "Store-Small (1 Story)", "owner": "RAHIMI INVESTMENTS INC"}, {"address": "1423 H ST NE", "search": "1423 H ST NE", "ssl": "10490032", "assessment": 655550.0, "proptype": "Store-Miscellaneous", "owner": "C AND C PROPERTY VENTURES LLC"}, {"address": "1321 LINDEN CT NE", "search": "1321 LINDEN CT NE", "ssl": "10270176", "assessment": 1198920.0, "proptype": "Residential-Mixed Use", "owner": "IRON CITY PARTNERS LLC"}, {"address": "1409 H ST NE", "search": "1409 H ST NE", "ssl": "10490025", "assessment": 556560.0, "proptype": "Store-Small (1 Story)", "owner": "TSURUNAKI LLC"}, {"address": "1204 H ST NE", "search": "1204 H ST NE", "ssl": "10030179", "assessment": 1290760.0, "proptype": "Store-Miscellaneous", "owner": "ILILTA AND ABSERA LLC"}, {"address": "700 H ST NE", "search": "700 H ST NE", "ssl": "08890044", "assessment": 7638840.0, "proptype": "Store-Small (1 Story)", "owner": "BRANDO REALTY LLC"}, {"address": "1111 H ST NE", "search": "1111 H ST NE", "ssl": "09820057", "assessment": 2299570.0, "proptype": "Residential-Multifamily (Misce", "owner": "1111 H STREET LLC"}, {"address": "510 H ST NE", "search": "510 H ST NE", "ssl": "08320014", "assessment": 1617360.0, "proptype": "Store-Miscellaneous", "owner": "510 H LLC"}, {"address": "526 H ST NE", "search": "526 H ST NE", "ssl": "08320010", "assessment": 1308510.0, "proptype": "Store-Miscellaneous", "owner": "MM PROPERTY GROUP LLC"}, {"address": "1222 H ST NE", "search": "1222 H ST NE", "ssl": "10030031", "assessment": 786290.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "1222 H ST MANAGEMENT LLC"}, {"address": "1000 H ST NE", "search": "1000 H ST NE", "ssl": "09580057", "assessment": 4910638.0, "proptype": "Commercial-Retail (Miscellaneo", "owner": "1000-1016 H ST NE LLC"}, {"address": "1334 H ST NE", "search": "1334 H ST NE", "ssl": "10260083", "assessment": 1192690.0, "proptype": "Store-Miscellaneous", "owner": "SMG DEVELOPMENT GROUP LLC"}];
+
+// ---- Build SSL lookup map (normalized ssl → property record) ----
+const SSL_MAP = {};
+PROPERTIES.forEach(p => { if (p.ssl) SSL_MAP[p.ssl] = p; });
+
+// ---- DC MAR geocoding API ----
+// Returns the official SSL for any valid DC address, even sub-addresses
+// within large lots. Falls back gracefully if unavailable.
+const MAR_API = 'https://citizenatlas.dc.gov/newwebservices/locationverifier.asmx/findLocation2';
+
+async function geocodeToSSL(address) {
+  const url = `${MAR_API}?str=${encodeURIComponent(address)}&f=json`;
+  const resp = await fetch(url, { mode: 'cors' });
+  if (!resp.ok) throw new Error(`MAR API HTTP ${resp.status}`);
+  const data = await resp.json();
+  // The MAR returns results in returnDataset.Table1
+  const rows = data?.returnDataset?.Table1;
+  if (!rows || !rows.length) return null;
+  // Normalize SSL: strip all spaces
+  const rawSSL = rows[0]?.SSL || rows[0]?.Ssl || rows[0]?.ssl || '';
+  return rawSSL.replace(/\s+/g, '');
+}
+
+// ---- Init ----
+(function () {
+  const input     = document.getElementById('addressInput');
+  const dropList  = document.getElementById('autocompleteList');
+  const resultSec = document.getElementById('resultSection');
+  const statusBar = document.getElementById('statusBar');
+  const statusMsg = document.getElementById('statusMsg');
+  const spinner   = document.getElementById('statusSpinner');
+
+  // Populate static UI from config
+  document.getElementById('lowName').textContent      = CONFIG.low.name;
+  document.getElementById('highName').textContent     = CONFIG.high.name;
+  document.getElementById('lowRateLabel').textContent  = `$${CONFIG.low.rate.toFixed(2)} per $100 of assessed value`;
+  document.getElementById('highRateLabel').textContent = `$${CONFIG.high.rate.toFixed(2)} per $100 of assessed value`;
+  document.getElementById('disclaimerText').textContent = CONFIG.disclaimer;
+
+  ['low','high'].forEach(tier => {
+    const ul = document.getElementById(`${tier}ServicesList`);
+    ul.innerHTML = CONFIG[tier].services.map(s => `<li>${s}</li>`).join('');
+  });
+
+  // ---- Helpers ----
+  function normalize(s) {
+    return s.toUpperCase()
+      .replace(/[.,]/g,'')
+      .replace(/\bSTREET\b/,'ST').replace(/\bAVENUE\b/,'AVE')
+      .replace(/\bROAD\b/,'RD').replace(/\bBOULEVARD\b/,'BLVD')
+      .replace(/\bNORTHEAST\b/,'NE').replace(/\bNORTHWEST\b/,'NW')
+      .replace(/\bSOUTHEAST\b/,'SE').replace(/\bSOUTHWEST\b/,'SW')
+      .replace(/\s+/g,' ').trim();
+  }
+
+  function localSearch(query) {
+    const q = normalize(query);
+    if (q.length < 2) return [];
+    return PROPERTIES.filter(p => normalize(p.search).includes(q)).slice(0, 8);
+  }
+
+  function fmt(n) {
+    return new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
+  }
+
+  function setStatus(type, msg, showSpinner) {
+    statusBar.className = `status-bar visible ${type}`;
+    statusMsg.textContent = msg;
+    spinner.style.display = showSpinner ? 'block' : 'none';
+  }
+  function clearStatus() {
+    statusBar.className = 'status-bar';
+    statusMsg.textContent = '';
+    spinner.style.display = 'none';
+  }
+
+  function showResult(prop, searchedAddress) {
+    document.getElementById('propAddress').textContent    = prop.address;
+    document.getElementById('propOwner').textContent      = prop.owner;
+    document.getElementById('propType').textContent       = prop.proptype;
+    document.getElementById('propAssessment').textContent = fmt(prop.assessment);
+
+    // Show parent-lot note if the searched address differs from the lot address
+    const lotNote = document.getElementById('lotNote');
+    const searchedNorm = normalize(searchedAddress);
+    const lotNorm      = normalize(prop.address);
+    if (searchedNorm && searchedNorm !== lotNorm && !lotNorm.includes(searchedNorm)) {
+      lotNote.textContent = `📍 ${searchedAddress.trim()} is recorded as part of the lot at ${prop.address}`;
+      lotNote.classList.add('visible');
+    } else {
+      lotNote.classList.remove('visible');
+    }
+
+    document.getElementById('lowTaxAmt').textContent  = fmt((prop.assessment / 100) * CONFIG.low.rate);
+    document.getElementById('highTaxAmt').textContent = fmt((prop.assessment / 100) * CONFIG.high.rate);
+
+    resultSec.classList.add('visible');
+    resultSec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  // ---- Autocomplete ----
+  let activeIdx = -1;
+
+  input.addEventListener('input', () => {
+    activeIdx = -1;
+    const q = input.value.trim();
+    clearStatus();
+    resultSec.classList.remove('visible');
+
+    const matches = localSearch(q);
+    if (!matches.length) { dropList.style.display = 'none'; return; }
+
+    dropList.innerHTML = matches.map((p, i) => `
+      <li role="option" data-idx="${i}">
+        <div class="addr-main">${p.search}</div>
+        <div class="addr-sub">${p.proptype}</div>
+      </li>`).join('');
+    dropList._matches = matches;
+    dropList.style.display = 'block';
+  });
+
+  dropList.addEventListener('click', e => {
+    const li = e.target.closest('li');
+    if (!li) return;
+    const prop = dropList._matches[+li.dataset.idx];
+    input.value = prop.search;
+    dropList.style.display = 'none';
+    showResult(prop, prop.search);
+  });
+
+  input.addEventListener('keydown', e => {
+    const items = dropList.querySelectorAll('li');
+    if (e.key === 'ArrowDown' && items.length) {
+      activeIdx = Math.min(activeIdx + 1, items.length - 1);
+      items.forEach((el,i) => el.classList.toggle('active', i === activeIdx));
+      e.preventDefault(); return;
+    }
+    if (e.key === 'ArrowUp' && items.length) {
+      activeIdx = Math.max(activeIdx - 1, 0);
+      items.forEach((el,i) => el.classList.toggle('active', i === activeIdx));
+      e.preventDefault(); return;
+    }
+    if (e.key === 'Escape') { dropList.style.display = 'none'; return; }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIdx >= 0 && dropList._matches) {
+        const prop = dropList._matches[activeIdx];
+        input.value = prop.search;
+        dropList.style.display = 'none';
+        showResult(prop, prop.search);
+      } else {
+        // No autocomplete selection — try MAR geocode lookup
+        dropList.style.display = 'none';
+        tryGeocodeLookup(input.value.trim());
+      }
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrap')) dropList.style.display = 'none';
+  });
+
+  // ---- MAR geocode fallback ----
+  async function tryGeocodeLookup(address) {
+    if (!address || address.length < 5) return;
+
+    // First check if it's already in local data
+    const local = localSearch(address);
+    if (local.length === 1) { showResult(local[0], address); return; }
+    if (local.length > 1)   { /* let autocomplete handle */ return; }
+
+    // Not found locally — ask the MAR
+    setStatus('loading', 'Looking up address in DC property records…', true);
+    resultSec.classList.remove('visible');
+
+    try {
+      const ssl = await geocodeToSSL(address + ' Washington DC');
+      if (!ssl) throw new Error('no result');
+
+      const prop = SSL_MAP[ssl];
+      if (prop) {
+        clearStatus();
+        showResult(prop, address);
+      } else {
+        setStatus('error',
+          'This address is within DC records but is not a commercial or mixed-use property in the proposed BID boundary.', false);
+      }
+    } catch (err) {
+      // MAR API unreachable or address truly not found
+      setStatus('error',
+        'Address not found in the BID assessment database. Only commercial and mixed-use properties within the proposed BID boundary are included. If you believe your address should appear, please contact us.', false);
+    }
+  }
+
+  // Also trigger MAR lookup when user clicks away from a typed address
+  // that didn't match autocomplete suggestions
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (dropList.style.display !== 'none') return; // user is selecting
+      const q = input.value.trim();
+      if (!q || resultSec.classList.contains('visible')) return;
+      const local = localSearch(q);
+      if (!local.length && q.length >= 5) tryGeocodeLookup(q);
+    }, 200);
+  });
+
+})();
+</script>
+</body>
+</html>
